@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" id="theme-color-meta" content="#eff1ed">
+  <title>EasyKey 管理面板</title>
+  <style>
+    /* =========================================
+       0. 基础重置 & 隐藏滚动条
+       ========================================= */
+    ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; -ms-overflow-style: none; scrollbar-width: none; }
+
+    html, body { width: 100%; height: 100%; overflow: hidden; position: fixed; top: 0; left: 0; }
+    html { background-color: var(--sys-bg); transition: background-color 0.2s; }
+    body { font-family: system-ui, -apple-system, sans-serif; color: var(--sys-on-bg); background-color: transparent; transition: color 0.2s; -webkit-font-smoothing: antialiased; }
+
+    /* =========================================
+       1. MD3 主题系统
+       ========================================= */
+    :root, :root.theme-green { --sys-bg: #fbfdf8; --sys-on-bg: #191c19; --sys-surface: #eff1ed; --sys-surface-high: #e9ece7; --sys-primary: #386a20; --sys-btn-bg: #c5e1a5; --sys-btn-on-bg: #2e7d32; --sys-outline: #737970; }
+    @media (prefers-color-scheme: dark) { :root, :root.theme-green { --sys-bg: #111411; --sys-on-bg: #e1e3de; --sys-surface: #1d201c; --sys-surface-high: #272b26; --sys-primary: #9cd67e; --sys-btn-bg: #33691e; --sys-btn-on-bg: #c8e6c9; --sys-outline: #8c9388; } }
+    :root.theme-purple { --sys-bg: #fdf8ff; --sys-on-bg: #1c1b1f; --sys-surface: #f3e8fa; --sys-surface-high: #e8def0; --sys-primary: #65558f; --sys-btn-bg: #eaddff; --sys-btn-on-bg: #4f378b; --sys-outline: #79747e; }
+    @media (prefers-color-scheme: dark) { :root.theme-purple { --sys-bg: #141218; --sys-on-bg: #e6e1e5; --sys-surface: #211f26; --sys-surface-high: #2b2930; --sys-primary: #d0bcff; --sys-btn-bg: #4f378b; --sys-btn-on-bg: #eaddff; --sys-outline: #938f99; } }
+    :root.theme-white { --sys-bg: #ffffff; --sys-on-bg: #1f1f1f; --sys-surface: #f5f5f5; --sys-surface-high: #ebebeb; --sys-primary: #0b57d0; --sys-btn-bg: #d3e3fd; --sys-btn-on-bg: #0b57d0; --sys-outline: #747775; }
+    @media (prefers-color-scheme: dark) { :root.theme-white { --sys-bg: #121212; --sys-on-bg: #e3e3e3; --sys-surface: #1e1e1e; --sys-surface-high: #2c2c2c; --sys-primary: #a8c7fa; --sys-btn-bg: #004a77; --sys-btn-on-bg: #c2e7ff; --sys-outline: #8e918f; } }
+    :root.theme-pink { --sys-bg: #fff8f8; --sys-on-bg: #201a1b; --sys-surface: #fcecec; --sys-surface-high: #f4ddde; --sys-primary: #9c4146; --sys-btn-bg: #ffd8d9; --sys-btn-on-bg: #40000a; --sys-outline: #857374; }
+    @media (prefers-color-scheme: dark) { :root.theme-pink { --sys-bg: #201a1b; --sys-on-bg: #ece0e0; --sys-surface: #2f2526; --sys-surface-high: #3b2d2f; --sys-primary: #ffb3b6; --sys-btn-bg: #7d2a30; --sys-btn-on-bg: #ffd8d9; --sys-outline: #a08c8d; } }
+    :root { --st-run-bg: #dcedc8; --st-run-txt: #20400c; --st-stop-bg: #ffdad6; --st-stop-txt: #410002; }
+    @media (prefers-color-scheme: dark) { :root { --st-run-bg: #1b4b14; --st-run-txt: #c8e6c9; --st-stop-bg: #93000a; --st-stop-txt: #ffdad6; } }
+
+    /* =========================================
+       2. 框架布局
+       ========================================= */
+    header { position: absolute; top: 0; left: 0; right: 0; height: 64px; display: flex; align-items: center; justify-content: space-between; background-color: var(--sys-bg); z-index: 100; padding: 0 8px; transition: background-color 0.2s; }
+    .title { font-size: 20px; font-weight: 500; position: absolute; left: 50%; transform: translateX(-50%); }
+
+    .page { display: none; position: absolute; top: 64px; bottom: calc(80px + env(safe-area-inset-bottom)); left: 0; right: 0; overflow-y: auto; overflow-x: hidden; padding: 16px; -webkit-overflow-scrolling: touch; }
+    .page.active { display: block; animation: simpleFade 0.2s ease forwards; }
+    @keyframes simpleFade { from { opacity: 0; } to { opacity: 1; } }
+
+    .bottom-nav {
+      position: absolute; bottom: 0; left: 0; right: 0; height: calc(80px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+      background-color: var(--sys-surface); display: flex; justify-content: space-around; align-items: center; z-index: 100; box-shadow: 0 -1px 4px rgba(0,0,0,0.05);
+      opacity: 1;
+
+      /* 添加居中展开的属性控制 */
+      clip-path: inset(0 0);
+      transition: background-color 0.2s, opacity 0.2s ease-out, clip-path 0.35s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--sys-on-bg); font-size: 12px; font-weight: 500; opacity: 0.6; transition: opacity 0.2s; cursor: pointer; }
+    .nav-icon { padding: 4px 20px; border-radius: 16px; transition: background-color 0.2s, color 0.2s; }
+    .nav-item svg { width: 24px; height: 24px; fill: currentColor; }
+    .nav-item.active { opacity: 1; }
+    .nav-item.active .nav-icon { background-color: var(--sys-primary); color: var(--sys-bg); }
+
+    /* =========================================
+       弹窗与底栏的优雅过渡 (替代生硬的 display:none)
+       ========================================= */
+    /* 弹窗打开时，底栏瞬间向中间缩起并透明隐身，为关闭时的“由中向两边展开”做准备 */
+    body.dialog-open .bottom-nav {
+      opacity: 0 !important;
+      clip-path: inset(0 50%) !important;
+      pointer-events: none !important;
+      transition: none !important;
+    }
+
+    /* 弹窗打开时，新建按钮瞬间缩回 0，为关闭时的“弹跳放大”做准备 */
+    body.dialog-open .md3-fab {
+      opacity: 0 !important;
+      transform: scale(0) !important;
+      pointer-events: none !important;
+      transition: none !important;
+    }
+
+    /* =========================================
+       3. 组件与卡片
+       ========================================= */
+    .card { background-color: var(--sys-surface); border-radius: 20px; padding: 20px; margin-bottom: 12px; display: flex; flex-direction: column; justify-content: center; transition: background-color 0.2s; }
+    .card.clickable:active { background-color: var(--sys-surface-high); }
+
+    #status-card { background-color: var(--st-stop-bg); color: var(--st-stop-txt); }
+    .status-content-wrapper { display: flex; justify-content: space-between; align-items: flex-end; }
+    .status-title { font-size: 14px; opacity: 0.8; margin-bottom: 4px; }
+    .status-val { font-size: 22px; font-weight: bold; }
+
+    .trigger-card-title { font-size: 13px; opacity: 0.7; margin-bottom: 8px; font-weight: 500; text-transform: uppercase; }
+    .trigger-card-value { font-size: 16px; font-weight: 500; word-break: break-all; }
+
+    .repo-item { padding: 16px; background: var(--sys-surface); border-radius: 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; transition: background-color 0.15s; cursor: pointer; }
+    .repo-item:active { background-color: var(--sys-surface-high); }
+    .repo-item-content { flex: 1; margin-right: 12px; pointer-events: none; }
+    .repo-item-title { font-size: 16px; font-weight: 500; margin-bottom: 4px; color: var(--sys-on-bg); }
+    .repo-item-desc { font-size: 13px; opacity: 0.7; line-height: 1.4; word-break: break-all; }
+    .repo-item-type { font-size: 11px; padding: 4px 10px; background: var(--sys-btn-bg); color: var(--sys-btn-on-bg); border-radius: 12px; font-weight: bold; flex-shrink: 0; text-transform: uppercase; pointer-events: none; }
+
+    /* 悬浮新建按钮 */
+    .md3-fab {
+      position: absolute; bottom: calc(100px + env(safe-area-inset-bottom)); right: 24px; z-index: 1000;
+      background-color: var(--sys-primary); color: var(--sys-bg); padding: 14px 18px; border-radius: 16px;
+      display: flex; align-items: center; gap: 8px; font-weight: 500; border: none; font-size: 15px; cursor: pointer;
+      transform: scale(0); opacity: 0; pointer-events: none;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      -webkit-backface-visibility: hidden; backface-visibility: hidden;
+      transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s;
+    }
+    .md3-fab.show { transform: scale(1); opacity: 1; pointer-events: auto; }
+    .md3-fab.show.scrolling { transform: scale(0) !important; opacity: 0 !important; pointer-events: none; transition: transform 0.2s ease, opacity 0.2s; }
+    .md3-fab:active { transform: scale(0.92) !important; opacity: 0.9; transition: transform 0.1s; }
+    .md3-fab svg { width: 22px; height: 22px; fill: currentColor; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+
+    /* =========================================
+       4. 弹窗系统与极致遮蔽动画 (Animation Choreography)
+       ========================================= */
+    .dialog-backdrop {
+      position: absolute; inset: 0; background: transparent; z-index: 2000;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s ease-out;
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    }
+    .dialog-backdrop.show { opacity: 1; pointer-events: auto; }
+
+    .dialog-box {
+      background: var(--sys-surface-high); color: var(--sys-on-bg);
+      border-radius: 24px; width: 340px; max-width: 90vw; max-height: 85vh;
+      display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.15); opacity: 0;
+    }
+    .dialog-backdrop.show .dialog-box { animation: dialogPop 0.25s cubic-bezier(0.2, 0, 0, 1) forwards; }
+    @keyframes dialogPop {
+      0% { transform: scale(0.9) translateY(10px); opacity: 0; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+
+    .dialog-header { padding: 20px 24px 12px 24px; flex-shrink: 0; }
+    .dialog-title { font-size: 18px; font-weight: 500; }
+    .dialog-content { padding: 0 24px; overflow-y: auto; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+
+    .dialog-footer {
+      padding: 12px 24px 20px 24px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-shrink: 0;
+      opacity: 1; transform: translateY(0);
+      transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+    }
+
+    /* 只要系统视口在变动，彻底隐身，不带位移 */
+    body.keyboard-transitioning .dialog-footer,
+    body.keyboard-transitioning .bottom-nav {
+      opacity: 0 !important;
+      transition: none !important;
+      pointer-events: none;
+    }
+
+    .dialog-btn { background: transparent; color: var(--sys-primary); border: none; padding: 10px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.15s; }
+    .dialog-btn:active { background-color: rgba(128,128,128,0.1); }
+    .dialog-btn.primary { background: var(--sys-primary); color: var(--sys-bg); }
+    .dialog-btn.primary:active { opacity: 0.8; }
+    .dialog-btn.danger { color: #ba1a1a; }
+    .dialog-btn.danger:active { background-color: rgba(186, 26, 26, 0.1); }
+    @media (prefers-color-scheme: dark) { .dialog-btn.danger { color: #ffb4ab; } .dialog-btn.danger:active { background-color: rgba(255, 180, 171, 0.1); } }
+    #btn-delete-cmd { margin-right: auto; }
+
+    .list-item { padding: 14px 0; border-bottom: 1px solid rgba(128,128,128,0.1); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .list-item:last-child { border-bottom: none; }
+    .list-item:active { opacity: 0.6; }
+    .list-item-title { font-size: 15px; font-weight: 500; pointer-events: none;}
+
+    .form-group { margin-bottom: 16px; position: relative; }
+    .form-label { display: block; font-size: 13px; opacity: 0.8; margin-bottom: 6px; }
+
+    .form-input, .setting-input {
+      width: 100%; background: var(--sys-surface); border: 1px solid transparent;
+      border-radius: 12px; padding: 12px; color: var(--sys-on-bg); font-size: 14px; outline: none;
+    }
+    .form-input:focus, .setting-input:focus { border-color: var(--sys-primary); }
+
+    /* 文本框自适应高度专用样式 */
+    textarea.form-input {
+      resize: none;
+      overflow-y: hidden;
+      min-height: 48px;
+    }
+
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid rgba(128,128,128,0.1); }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-input { margin-top: 10px; font-family: monospace; font-size: 13px; }
+
+    .select-box { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
+    .select-box::after { content: "▼"; font-size: 10px; opacity: 0.5; margin-left: 8px; }
+    .select-menu-container { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: var(--sys-surface); border: 1px solid var(--sys-outline); border-radius: 12px; overflow: hidden; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; }
+    .select-menu-container.open { display: block; }
+    .select-option { padding: 12px 16px; font-size: 14px; cursor: pointer; border-bottom: 1px solid rgba(128,128,128,0.05); }
+    .select-option:last-child { border-bottom: none; }
+    .select-option:active { background-color: var(--sys-surface-high); }
+
+    .custom-select-btn { background-color: var(--sys-btn-bg); color: var(--sys-btn-on-bg); font-size: 14px; font-weight: 500; cursor: pointer; display: flex; justify-content: center; align-items: center; border-radius: 12px;}
+    .custom-select-btn:active { opacity: 0.8; }
+  </style>
+</head>
+<body>
+
+  <!-- 选择命令弹窗 -->
+  <div class="dialog-backdrop" id="dialog-select">
+    <div class="dialog-box">
+      <div class="dialog-header"><div class="dialog-title">修改命令</div></div>
+      <div class="dialog-content" id="dialog-select-list"></div>
+      <div class="dialog-footer"><button class="dialog-btn" onclick="closeDialog('dialog-select')">取消</button></div>
+    </div>
+  </div>
+
+  <!-- 编辑/新建命令弹窗 -->
+  <div class="dialog-backdrop" id="dialog-edit">
+    <div class="dialog-box">
+      <div class="dialog-header"><div class="dialog-title" id="edit-dialog-title">新建命令</div></div>
+      <div class="dialog-content">
+        <input type="hidden" id="edit-id">
+        <div class="form-group" style="z-index: 100;">
+          <label class="form-label">命令类型</label>
+          <input type="hidden" id="edit-type" value="direct">
+          <div class="form-input select-box" id="edit-type-btn" onclick="toggleTypeMenu(event)">直接命令 (Direct)</div>
+          <div class="select-menu-container" id="edit-type-menu">
+            <div class="select-option" onclick="selectEditType('direct', '直接命令 (Direct)')">直接命令 (Direct)</div>
+            <div class="select-option" onclick="selectEditType('indirect', '间接命令 (Indirect .sh)')">间接命令 (Indirect .sh)</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">命令名称</label>
+          <input type="text" class="form-input" id="edit-name" placeholder="例如：打开手电筒">
+        </div>
+        <div class="form-group">
+          <label class="form-label">描述</label>
+          <input type="text" class="form-input" id="edit-desc" placeholder="简短的一句话描述">
+        </div>
+        <div class="form-group">
+          <label class="form-label">命令内容 / 文件名</label>
+          <textarea class="form-input" id="edit-content" placeholder="命令内容或 .sh 文件名"></textarea>
+        </div>
+        <!-- 动态垫片：15vh -->
+        <div id="edit-dialog-spacer" style="height: 0; transition: height 0.3s cubic-bezier(0.2, 0, 0, 1);"></div>
+      </div>
+      <div class="dialog-footer">
+        <button class="dialog-btn danger" id="btn-delete-cmd" onclick="confirmDeleteCommand()" style="display: none;">删除</button>
+        <button class="dialog-btn" onclick="closeDialog('dialog-edit')">取消</button>
+        <button class="dialog-btn primary" onclick="saveEditedCommand()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 二级确认删除弹窗 -->
+  <div class="dialog-backdrop" id="dialog-confirm-delete" style="z-index: 2010;">
+    <div class="dialog-box">
+      <div class="dialog-header"><div class="dialog-title">确认删除</div></div>
+      <div class="dialog-content" style="padding-bottom: 8px;">确定要删除这条命令吗？此操作不可撤销。</div>
+      <div class="dialog-footer">
+        <button class="dialog-btn" onclick="closeDialog('dialog-confirm-delete')">取消</button>
+        <button class="dialog-btn danger" onclick="executeDeleteCommand()">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <button class="md3-fab" id="fab-add" onclick="openEditDialog()">
+    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+    新建
+  </button>
+
+  <header>
+    <div style="width: 48px;"></div>
+    <div class="title">EasyKey 面板</div>
+    <div style="width: 48px;"></div>
+  </header>
+
+  <div id="page-home" class="page active">
+    <div class="card" id="status-card">
+      <div class="status-content-wrapper">
+        <div>
+          <div class="status-title">EasyKey 进程</div>
+          <div class="status-val" id="status-label">检测中...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card clickable" onclick="openSelectDialog('click')">
+      <div class="trigger-card-title">单击触发 (CLICK)</div>
+      <div class="trigger-card-value" id="val-click">读取中...</div>
+    </div>
+
+    <div class="card clickable" onclick="openSelectDialog('long')">
+      <div class="trigger-card-title">长按触发 (LONG)</div>
+      <div class="trigger-card-value" id="val-long">读取中...</div>
+    </div>
+
+    <div class="card clickable" onclick="openSelectDialog('double')">
+      <div class="trigger-card-title">双击触发 (DOUBLE)</div>
+      <div class="trigger-card-value" id="val-double">读取中...</div>
+    </div>
+  </div>
+
+  <div id="page-config" class="page">
+    <div style="margin-bottom: 16px; padding: 0 8px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-weight: 500; font-size: 16px;">Repo 命令库管理</span>
+    </div>
+    <div id="repo-list-container"></div>
+  </div>
+
+  <div id="page-settings" class="page">
+    <div class="card">
+      <h3 style="margin-bottom: 16px; font-size: 18px; font-weight: 500;">个性化与环境</h3>
+      <div class="setting-row" style="flex-direction: column; align-items: flex-start;">
+        <span style="font-size: 15px; margin-bottom: 8px;">主题颜色</span>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%;" id="theme-buttons">
+          <div class="custom-select-btn" style="padding: 10px 0;" onclick="setTheme('green')">淡绿</div>
+          <div class="custom-select-btn" style="padding: 10px 0;" onclick="setTheme('purple')">淡紫</div>
+          <div class="custom-select-btn" style="padding: 10px 0;" onclick="setTheme('pink')">淡粉</div>
+          <div class="custom-select-btn" style="padding: 10px 0;" onclick="setTheme('white')">白色</div>
+        </div>
+      </div>
+      <div class="setting-row" style="flex-direction: column; align-items: flex-start;">
+        <span style="font-size: 15px;">Shell 环境变量路径 (间接命令)</span>
+        <input type="text" class="setting-input" id="sh-path-input" placeholder="例如 /system/bin/sh ...">
+        <div style="width: 100%; text-align: right; margin-top: 8px;">
+          <button class="dialog-btn primary" onclick="saveShPath()" style="padding: 6px 16px;">保存路径</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="bottom-nav">
+    <div class="nav-item active" data-target="page-home">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>
+      <span>主页</span>
+    </div>
+    <div class="nav-item" data-target="page-config">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg></div>
+      <span>配置</span>
+    </div>
+    <div class="nav-item" data-target="page-settings">
+      <div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
+      <span>设置</span>
+    </div>
+  </nav>
+
+  <script>
+    const MODULE_DIR = "/data/adb/modules/Easy_Key/";
+    const REPO_FILE = MODULE_DIR + "repo.json";
+    const INI_FILE = MODULE_DIR + "config.ini";
+
+    let shellQueue = Promise.resolve();
+    function execShell(cmd) {
+      return new Promise((resolve) => {
+        shellQueue = shellQueue.then(async () => {
+          if (typeof window.ksu !== 'undefined' && window.ksu.exec) {
+            try {
+              const res = await window.ksu.exec(cmd);
+              let parsed; try { parsed = typeof res === 'string' ? JSON.parse(res) : res; } catch (e) { return resolve({ errno: 0, stdout: String(res) }); }
+              resolve({ errno: parsed.errno||0, stdout: String(parsed.stdout || "") });
+            } catch (e) { resolve({ errno: -1, stdout: "" }); }
+          } else { resolve({ errno: -1, stdout: "" }); }
+        });
+      });
+    }
+
+    async function readFromFileSafe(filePath) {
+      const { stdout } = await execShell(`cat ${filePath} 2>/dev/null | base64 | tr -d '\n'`);
+      if (stdout && stdout.trim() !== "") {
+        try { return decodeURIComponent(escape(atob(stdout.trim()))); } catch (e) { return null; }
+      }
+      return null;
+    }
+
+    async function writeToFileSafe(filePath, contentStr) {
+      const b64 = btoa(unescape(encodeURIComponent(contentStr)));
+      const tempPath = filePath + '.tmp';
+      await execShell(`printf '%s' '${b64}' | base64 -d > ${tempPath} && mv -f ${tempPath} ${filePath}`);
+    }
+
+    function setTheme(theme) {
+      document.documentElement.className = `theme-${theme}`;
+      localStorage.setItem('easykey_theme', theme);
+      setTimeout(() => {
+        const sc = getComputedStyle(document.documentElement).getPropertyValue('--sys-surface').trim();
+        document.getElementById('theme-color-meta').setAttribute('content', sc);
+      }, 50);
+    }
+    setTheme(localStorage.getItem('easykey_theme') || 'purple');
+
+    let repoData = [];
+    let iniData = { click: "未配置", long: "未配置", double: "未配置" };
+    let shEnvPath = localStorage.getItem('easykey_sh_path') || "/system/bin/sh /data/adb/modules/Easy_Key/ind/";
+    document.getElementById('sh-path-input').value = shEnvPath;
+
+    function saveShPath() {
+      shEnvPath = document.getElementById('sh-path-input').value.trim();
+      if(!shEnvPath.endsWith('/')) shEnvPath += '/';
+      localStorage.setItem('easykey_sh_path', shEnvPath);
+      updateHomeCards();
+      alert("环境路径已保存并更新");
+    }
+
+    async function checkStatus() {
+      const { stdout } = await execShell("pidof EasyKey");
+      const card = document.getElementById('status-card');
+      const label = document.getElementById('status-label');
+      if (stdout && stdout.trim() !== "") {
+        card.style.backgroundColor = 'var(--st-run-bg)'; card.style.color = 'var(--st-run-txt)';
+        label.innerText = '运行中';
+      } else {
+        card.style.backgroundColor = 'var(--st-stop-bg)'; card.style.color = 'var(--st-stop-txt)';
+        label.innerText = '未运行';
+      }
+    }
+
+    async function fetchRepo() {
+      const text = await readFromFileSafe(REPO_FILE);
+      if (text) {
+        try { repoData = JSON.parse(text); } catch (e) { repoData = null; }
+      } else { repoData = null; }
+
+      if (!repoData || !Array.isArray(repoData) || repoData.length === 0) {
+        repoData = [
+          { "id": "cmd_1", "type": "direct", "name": "微信扫一扫", "desc": "打开微信扫一扫", "content": "cmd activity start -n com.tencent.mm/com.tencent.mm.ui.LauncherUI  -a com.tencent.mm.ui.ShortCutDispatchAction --es LauncherUI.Shortcut.LaunchType launch_type_scan_qrcode" },
+          { "id": "cmd_2", "type": "direct", "name": "支付宝扫一扫", "desc": "打开支付宝扫一扫", "content": "cmd activity start -n com.eg.android.AlipayGphone/com.alipay.android.phone.wallet.shortcuts.bridge.ShortcutsLauncherActivity -a android.intent.action.VIEW  --es KEY_APP_ID 10000007 --es KEY_SCHEME \"alipays://platformapi/startapp?appId=10000007&sourceId=scan3dtouch\"" },
+          { "id": "cmd_3", "type": "direct", "name": "Google 圈点即搜", "desc": "需要 MICTS", "content": "cmd activity start -n com.parallelc.micts/.ui.activity.MainActivity" },
+          { "id": "cmd_4", "type": "direct", "name": "Google 问屏", "desc": "原生 Google 问屏", "content": "cmd activity start -a android.intent.action.VOICE_COMMAND -p com.google.android.googlequicksearchbox" },
+          { "id": "cmd_5", "type": "direct", "name": "Google 问屏 (稳定版)", "desc": "需要 VISTrigger，但是更稳定", "content": "cmd activity start -n com.parallelc.vistrigger/com.parallelc.micts.ui.activity.MainActivity" },
+          { "id": "cmd_6", "type": "direct", "name": "小布识屏", "desc": "触发全屏 OCR", "content": "cmd activity start-foreground-service -a oplus.intent.action.DIRECT_SIDEBAR_SERVICE --es extra_entrance_function full_screen_ocr --es triggered_app com.coloros.smartsidebar" },
+          { "id": "cmd_7", "type": "direct", "name": "小布一键闪记", "desc": "调用数据收集服务", "content": "cmd activity start-foreground-service --user 0 -n com.oplus.gleanerservice/com.oplus.gleanerservice.flashnotes.business.service.DataCollectService -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1" },
+          { "id": "cmd_8", "type": "direct", "name": "小布听一听", "desc": "调用数据收集服务 (长按类型)", "content": "cmd activity start-foreground-service --user 0 -n com.oplus.gleanerservice/com.oplus.gleanerservice.flashnotes.business.service.DataCollectService -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1 --ei longPressEventType 1" },
+          { "id": "cmd_9", "type": "direct", "name": "官方相机", "desc": "启动系统相机", "content": "cmd activity start -n com.oplus.camera/com.oplus.camera.Camera" },
+          { "id": "cmd_10", "type": "direct", "name": "截屏", "desc": "系统级别截屏", "content": "service call color_screenshot 1" },
+          { "id": "cmd_11", "type": "direct", "name": "全局搜索", "desc": "打开全局搜索首页", "content": "cmd activity start -n com.heytap.quicksearchbox/com.heytap.quicksearchbox.ui.activity.SearchHomeActivity" }
+        ];
+        await writeRepo();
+      }
+      renderRepoList();
+    }
+
+    async function writeRepo() {
+      await writeToFileSafe(REPO_FILE, JSON.stringify(repoData));
+    }
+
+    async function fetchIni() {
+      const text = await readFromFileSafe(INI_FILE);
+      iniData = { click: "未配置", long: "未配置", double: "未配置" };
+      if (text) {
+        const lines = text.replace(/\r/g, '').split('\n');
+        lines.forEach(line => {
+          let l = line.trim();
+          if(l && l.includes('=')) {
+            const idx = l.indexOf('=');
+            const k = l.substring(0, idx).trim();
+            let v = l.substring(idx + 1).replace(/[\r\n]+/g, '').trim().replace(/^['"](.*)['"]$/, '$1');
+            if(k === 'click' || k === 'long' || k === 'double') {
+              iniData[k] = v === '' ? '未配置' : v;
+            }
+          }
+        });
+      }
+      updateHomeCards();
+    }
+
+    async function writeIni() {
+      const wClick = iniData.click === "未配置" ? "" : iniData.click;
+      const wLong = iniData.long === "未配置" ? "" : iniData.long;
+      const wDouble = iniData.double === "未配置" ? "" : iniData.double;
+      const content = `click=${wClick}\nlong=${wLong}\ndouble=${wDouble}`;
+      await writeToFileSafe(INI_FILE, content);
+    }
+
+    function normalizeCmdStr(str) {
+      if (!str) return "";
+      return String(str).replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function getCommandNameByContent(rawCmd) {
+      if(!rawCmd || rawCmd === "未配置") return "未配置";
+      const target = normalizeCmdStr(rawCmd);
+      for (let cmd of repoData) {
+        let cmdDirect = normalizeCmdStr(cmd.content);
+        if (cmd.type === 'direct' && cmdDirect === target) return cmd.name;
+
+        let cmdIndirect = normalizeCmdStr(shEnvPath + cmd.content);
+        if (cmd.type === 'indirect' && cmdIndirect === target) return cmd.name;
+      }
+      return rawCmd;
+    }
+
+    function updateHomeCards() {
+      document.getElementById('val-click').innerText = getCommandNameByContent(iniData.click);
+      document.getElementById('val-long').innerText = getCommandNameByContent(iniData.long);
+      document.getElementById('val-double').innerText = getCommandNameByContent(iniData.double);
+    }
+
+    function closeDialog(id) {
+      document.getElementById(id).classList.remove('show');
+      setTimeout(() => {
+        if (document.querySelectorAll('.dialog-backdrop.show').length === 0) {
+          document.body.classList.remove('dialog-open');
+        }
+      }, 50); // 这 50ms 后 .dialog-open 被移除，底栏立刻展开并显现
+    }
+
+    let currentSelectTrigger = 'click';
+    function openSelectDialog(trigger) {
+      currentSelectTrigger = trigger;
+      const listContainer = document.getElementById('dialog-select-list');
+      listContainer.innerHTML = '';
+
+      const frag = document.createDocumentFragment();
+      repoData.forEach(cmd => {
+        const div = document.createElement('div');
+        div.className = 'list-item';
+        div.innerHTML = `
+          <div class="list-item-title">${cmd.name}</div>
+          <div style="opacity:0.6;font-size:12px;pointer-events:none;">${cmd.type === 'direct'?'直接':'间接'}</div>
+        `;
+        div.onclick = () => selectCommand(cmd);
+        frag.appendChild(div);
+      });
+      listContainer.appendChild(frag);
+
+      document.body.classList.add('dialog-open');
+      document.getElementById('dialog-select').classList.add('show');
+    }
+
+    async function selectCommand(cmd) {
+      closeDialog('dialog-select');
+      const finalContent = cmd.type === 'direct' ? cmd.content : (shEnvPath + cmd.content);
+      iniData[currentSelectTrigger] = finalContent;
+      await writeIni();
+      updateHomeCards();
+    }
+
+    function renderRepoList() {
+      const container = document.getElementById('repo-list-container');
+      container.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      repoData.forEach(cmd => {
+        const el = document.createElement('div');
+        el.className = 'repo-item';
+        el.innerHTML = `
+          <div class="repo-item-content">
+            <div class="repo-item-title">${cmd.name}</div>
+            <div class="repo-item-desc">${cmd.desc}</div>
+          </div>
+          <div class="repo-item-type">${cmd.type === 'direct' ? 'Direct' : 'Indirect'}</div>
+        `;
+        el.onclick = () => openEditDialog(cmd.id);
+        frag.appendChild(el);
+      });
+      container.appendChild(frag);
+    }
+
+    function toggleTypeMenu(e) {
+      e.stopPropagation();
+      document.getElementById('edit-type-menu').classList.toggle('open');
+    }
+
+    function selectEditType(val, label) {
+      document.getElementById('edit-type').value = val;
+      document.getElementById('edit-type-btn').innerText = label;
+      document.getElementById('edit-type-menu').classList.remove('open');
+    }
+
+    document.addEventListener('click', () => {
+      const menu = document.getElementById('edit-type-menu');
+      if (menu && menu.classList.contains('open')) {
+        menu.classList.remove('open');
+      }
+    });
+
+    function openEditDialog(cmdId = null) {
+      const deleteBtn = document.getElementById('btn-delete-cmd');
+      if (cmdId) {
+        const cmd = repoData.find(c => c.id === cmdId);
+        document.getElementById('edit-dialog-title').innerText = "编辑命令";
+        document.getElementById('edit-id').value = cmd.id;
+        selectEditType(cmd.type, cmd.type === 'direct' ? '直接命令 (Direct)' : '间接命令 (Indirect .sh)');
+        document.getElementById('edit-name').value = cmd.name;
+        document.getElementById('edit-desc').value = cmd.desc;
+        document.getElementById('edit-content').value = cmd.content;
+        deleteBtn.style.display = 'block';
+      } else {
+        document.getElementById('edit-dialog-title').innerText = "新建命令";
+        document.getElementById('edit-id').value = "";
+        selectEditType('direct', '直接命令 (Direct)');
+        document.getElementById('edit-name').value = "";
+        document.getElementById('edit-desc').value = "";
+        document.getElementById('edit-content').value = "";
+        deleteBtn.style.display = 'none';
+      }
+      document.body.classList.add('dialog-open');
+      document.getElementById('dialog-edit').classList.add('show');
+
+      // 弹窗打开时同步调整文本框高度
+      requestAnimationFrame(() => {
+        const ta = document.getElementById('edit-content');
+        ta.style.height = 'auto';
+        ta.style.height = ta.scrollHeight + 'px';
+      });
+    }
+
+    // 动态调整文本框高度
+    document.getElementById('edit-content').addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = this.scrollHeight + 'px';
+    });
+
+    function confirmDeleteCommand() {
+      document.getElementById('dialog-confirm-delete').classList.add('show');
+    }
+
+    async function executeDeleteCommand() {
+      const id = document.getElementById('edit-id').value;
+      if (id) {
+        repoData = repoData.filter(c => c.id !== id);
+        await writeRepo();
+        renderRepoList();
+        updateHomeCards();
+      }
+      closeDialog('dialog-confirm-delete');
+      closeDialog('dialog-edit');
+    }
+
+    async function saveEditedCommand() {
+      const id = document.getElementById('edit-id').value;
+      const newCmd = {
+        id: id || "cmd_" + Date.now(),
+        type: document.getElementById('edit-type').value,
+        name: document.getElementById('edit-name').value || "未命名",
+        desc: document.getElementById('edit-desc').value || "",
+        content: document.getElementById('edit-content').value || ""
+      };
+      if (id) {
+        const index = repoData.findIndex(c => c.id === id);
+        if (index > -1) repoData[index] = newCmd;
+      } else { repoData.push(newCmd); }
+
+      await writeRepo(); renderRepoList(); closeDialog('dialog-edit'); updateHomeCards();
+    }
+
+    // 聚焦辅助：触发居中
+    document.querySelectorAll('.form-input, .setting-input, textarea').forEach(el => {
+      el.addEventListener('focus', function() {
+        setTimeout(() => {
+          this.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 200);
+      });
+    });
+
+    // 真实视口变化监听 (控制弹窗在键盘变化时的隐藏与重置逻辑)
+    let keyboardTimer;
+    let lastViewportWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+    let maxViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+    function handleViewportChange() {
+      const currentVW = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+      const currentVH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+      if (Math.abs(currentVW - lastViewportWidth) > 50) {
+        lastViewportWidth = currentVW;
+        maxViewportHeight = currentVH;
+      } else {
+        if (currentVH > maxViewportHeight) {
+          maxViewportHeight = currentVH;
+        }
+      }
+
+      document.body.classList.add('keyboard-transitioning');
+
+      const spacer = document.getElementById('edit-dialog-spacer');
+
+      if (currentVH < maxViewportHeight - 100) {
+        if (spacer) spacer.style.height = '15vh';
+
+        setTimeout(() => {
+          const activeEl = document.activeElement;
+          if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+            activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 150);
+      } else {
+        if (spacer) spacer.style.height = '0';
+      }
+
+      clearTimeout(keyboardTimer);
+      keyboardTimer = setTimeout(() => {
+        document.body.classList.remove('keyboard-transitioning');
+      }, 700);
+    }
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleViewportChange);
+    } else {
+      window.addEventListener('resize', handleViewportChange);
+    }
+
+    let scrollTimer;
+    document.getElementById('page-config').addEventListener('scroll', () => {
+      const fab = document.getElementById('fab-add');
+      if(fab.classList.contains('show')) {
+        fab.classList.add('scrolling');
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(() => {
+          fab.classList.remove('scrolling');
+        }, 200);
+      }
+    }, { passive: true });
+
+    const navItems = document.querySelectorAll('.nav-item');
+    const pages = document.querySelectorAll('.page');
+    navItems.forEach(item => {
+      item.addEventListener('click', () => {
+        navItems.forEach(n => n.classList.remove('active')); item.classList.add('active');
+        const targetId = item.getAttribute('data-target');
+        pages.forEach(p => p.classList.remove('active')); document.getElementById(targetId).classList.add('active');
+        if (targetId === 'page-home') { checkStatus(); refreshData(); }
+
+        const fab = document.getElementById('fab-add');
+        if (targetId === 'page-config') fab.classList.add('show'); else fab.classList.remove('show');
+      });
+    });
+
+    async function refreshData() { await fetchRepo(); await fetchIni(); }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { checkStatus(); refreshData(); }
+    });
+    window.onload = () => { checkStatus(); refreshData(); };
+  </script>
+</body>
+</html>

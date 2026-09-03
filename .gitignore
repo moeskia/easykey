@@ -1,0 +1,10 @@
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+*.pdb
+*.original
+*-selftest.exe
+selftest.exe
+*.tmp

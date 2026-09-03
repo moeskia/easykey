@@ -1,0 +1,1 @@
+uv run --no-project --with ziglang python -m ziglang cc -target aarch64-linux-musl -O2 -flto -fdata-sections -ffunction-sections -fno-asynchronous-unwind-tables -static -s "-Wl,--gc-sections" "-Wl,--build-id=none" -Wall -Wextra -Werror EasyKey.c -o EasyKey
