@@ -70,9 +70,13 @@ ui_print " "
 
 if [ -d "/data/adb/modules/Easy_Key" ]; then
     ui_print "- 检测到 EasyKey 模块正在更新"
-    if [ -f "$MODPATH/config.ini" ]; then
-        rm -f "$MODPATH/config.ini"
+    if [ -f "/data/adb/modules/Easy_Key/config.ini" ]; then
+        cp -f "/data/adb/modules/Easy_Key/config.ini" "$MODPATH/config.ini"
         ui_print "- 已保留原本的快捷键配置"
+    fi
+    if [ -f "/data/adb/modules/Easy_Key/repo.json" ]; then
+        cp -f "/data/adb/modules/Easy_Key/repo.json" "$MODPATH/repo.json"
+        ui_print "- 已保留原本的命令库"
     fi
     if [ -f "/data/adb/modules/Easy_Key/action.sh" ]; then
         rm -f "/data/adb/modules/Easy_Key/action.sh"

@@ -8,3 +8,6 @@
 *-selftest.exe
 selftest.exe
 *.tmp
+/dist/
+/SystemUI.apk
+/selftest-check.exe
