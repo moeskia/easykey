@@ -360,9 +360,8 @@
     const MAX_COMMAND_BYTES = 1023;
     const SNAPSHOT_COMMAND = `
 pid=$(pidof EasyKey 2>/dev/null | awk '{print $1}')
-echo "ek_pid=$pid"
 version=$(sed -n 's/^version=//p' ${MODULE_DIR}module.prop 2>/dev/null | head -n 1)
-echo "ek_version=$version"
+state=""; rss=""; threads=""; pss=""; start=""; cpu_ticks=""; system_uptime=""; clock_ticks=""; input=""
 if [ -n "$pid" ] && [ -r "/proc/$pid/status" ]; then
   state=$(sed -n 's/^State:[[:space:]]*//p' /proc/$pid/status)
   rss=$(awk '/^VmRSS:/{print $2 " " $3}' /proc/$pid/status)
@@ -374,60 +373,45 @@ if [ -n "$pid" ] && [ -r "/proc/$pid/status" ]; then
   clock_ticks=$(getconf CLK_TCK 2>/dev/null)
   [ -n "$clock_ticks" ] || clock_ticks=100
   input=$(readlink /proc/$pid/fd/* 2>/dev/null | grep -m 1 '^/dev/input/')
-  echo "ek_state=$state"
-  echo "ek_rss=$rss"
-  echo "ek_threads=$threads"
-  echo "ek_pss=$pss"
-  echo "ek_start=$start"
-  echo "ek_cpu_ticks=$cpu_ticks"
-  echo "ek_system_uptime=$system_uptime"
-  echo "ek_clock_ticks=$clock_ticks"
-  echo "ek_input=$input"
 fi
-if [ -f ${INI_FILE} ]; then
-  echo "ek_ini_exists=1"
-  printf 'ek_ini='
-  base64 ${INI_FILE} | tr -d '\n'
-  echo
-else
-  echo "ek_ini_exists=0"
-  echo "ek_ini="
-fi
-if [ -f ${REPO_FILE} ]; then
-  echo "ek_repo_exists=1"
-  printf 'ek_repo='
-  base64 ${REPO_FILE} | tr -d '\n'
-  echo
-else
-  echo "ek_repo_exists=0"
-  echo "ek_repo="
-fi`.trim();
+echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$threads|ek_pss=$pss|ek_start=$start|ek_cpu_ticks=$cpu_ticks|ek_system_uptime=$system_uptime|ek_clock_ticks=$clock_ticks|ek_input=$input"`.trim();
 
     let shellQueue = Promise.resolve();
+    function pickField(obj, keys) {
+      for (let i = 0; i < keys.length; i++) {
+        const v = obj[keys[i]];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    }
     function execShell(cmd) {
       const task = shellQueue.then(async () => {
-        if (typeof window.ksu === 'undefined' || !window.ksu.exec)
-          return { errno: -1, stdout: "", stderr: "Root WebUI 接口不可用" };
-        try {
-          const result = await window.ksu.exec(cmd);
-          let parsed = result;
-          if (typeof result === 'string') {
-            try {
-              const value = JSON.parse(result);
-              if (value && typeof value === 'object') parsed = value;
-            } catch (e) {}
+        let res;
+        if (typeof window.ksu === 'undefined' || !window.ksu.exec) {
+          res = { errno: -1, stdout: "", stderr: "Root WebUI 接口不可用" };
+        } else {
+          try {
+            const raw = await window.ksu.exec(cmd);
+            let obj = null;
+            if (raw && typeof raw === 'object') obj = raw;
+            else if (typeof raw === 'string') {
+              try { const j = JSON.parse(raw); if (j && typeof j === 'object') obj = j; } catch (e) {}
+            }
+            if (obj) {
+              const eCode = pickField(obj, ['errno', 'code', 'exitCode', 'returncode', 'rc', 'status']);
+              const out = pickField(obj, ['stdout', 'out', 'output', 'text', 'data', 'result', 'res']);
+              const err = pickField(obj, ['stderr', 'err', 'error', 'errMsg', 'message']);
+              let code = 0;
+              if (eCode !== undefined) { const n = Number(eCode); code = Number.isNaN(n) ? 1 : n; }
+              res = { errno: code, stdout: out === undefined ? "" : String(out), stderr: err === undefined ? "" : String(err) };
+            } else {
+              res = { errno: 0, stdout: typeof raw === 'string' ? raw : String(raw || ""), stderr: "" };
+            }
+          } catch (e) {
+            res = { errno: -1, stdout: "", stderr: String(e) };
           }
-          if (parsed && typeof parsed === 'object') {
-            return {
-              errno: Number(parsed.errno || 0),
-              stdout: String(parsed.stdout || ""),
-              stderr: String(parsed.stderr || "")
-            };
-          }
-          return { errno: 0, stdout: String(result || ""), stderr: "" };
-        } catch (e) {
-          return { errno: -1, stdout: "", stderr: String(e) };
         }
+        return res;
       });
       shellQueue = task.catch(() => {});
       return task;
@@ -460,6 +444,32 @@ fi`.trim();
       }
     }
 
+    async function readFileChunked(filePath, chunkLen) {
+      const ex = await execShell(`[ -f ${filePath} ] || exit 44`);
+      if (ex.errno === 44) return { ok: false, exists: false, text: "", error: "文件不存在" };
+      if (ex.errno !== 0) return { ok: false, exists: true, text: "", error: ex.stderr };
+      const parts = [];
+      const step = chunkLen || 1000;
+      let offset = 0;
+      for (;;) {
+        const start = offset + 1;
+        const end = offset + step;
+        const cmd = `b64=$(base64 < ${filePath} | tr -d '\n'); printf '%s' "$b64" | cut -c${start}-${end}`;
+        const r = await execShell(cmd);
+        if (r.errno !== 0) return { ok: false, exists: true, text: "", error: r.stderr };
+        const s = String(r.stdout || "").replace(/\s/g, "");
+        if (!s) break;
+        parts.push(s);
+        if (s.length < step) break;
+        offset += step;
+      }
+      try {
+        return { ok: true, exists: true, text: decodeText(parts.join("")), error: "" };
+      } catch (e) {
+        return { ok: false, exists: true, text: "", error: "文件不是有效的 UTF-8 文本" };
+      }
+    }
+
     async function writeToFileSafe(filePath, contentStr) {
       const b64 = encodeText(contentStr);
       const tempPath = filePath + '.tmp';
@@ -483,9 +493,9 @@ fi`.trim();
 
     function parseSnapshot(text) {
       const values = {};
-      text.replace(/\r/g, '').split('\n').forEach(line => {
-        const index = line.indexOf('=');
-        if (index > 2 && line.startsWith('ek_')) values[line.slice(3, index)] = line.slice(index + 1);
+      String(text || '').replace(/\r/g, '').split(/[\n|]+/).forEach(token => {
+        const index = token.indexOf('=');
+        if (index > 2 && token.startsWith('ek_')) values[token.slice(3, index)] = token.slice(index + 1);
       });
       return values;
     }
@@ -584,22 +594,26 @@ fi`.trim();
 
     async function applySnapshot(values) {
       applyStatus(values);
-      if (values.ini_exists === '1') {
-        try { iniData = parseIniText(decodeText(values.ini || "")); }
-        catch (e) { notifyUser("config.ini 解码失败，已保留当前页面数据"); }
+      const ini = await readFromFileSafe(INI_FILE);
+      if (ini.ok) {
+        try { iniData = parseIniText(ini.text); }
+        catch (e) { notifyUser("config.ini 解析失败，已保留当前页面数据"); }
       } else {
         iniData = { click: "未配置", long: "未配置", double: "未配置" };
       }
-      if (values.repo_exists === '1') {
+      const repo = await readFileChunked(REPO_FILE, 1000);
+      if (repo.ok) {
         try {
-          const next = JSON.parse(decodeText(values.repo || ""));
+          const next = JSON.parse(repo.text);
           if (!Array.isArray(next)) throw new Error();
           repoData = next;
         } catch (e) {
-          notifyUser("repo.json 格式错误，已保留当前页面数据");
+          notifyUser("repo.json 解析失败，已保留当前页面数据");
         }
-      } else {
+      } else if (!repo.exists) {
         await loadDefaultRepo();
+      } else {
+        notifyUser("repo.json 读取失败，已保留当前页面数据：" + repo.error);
       }
       renderRepoList();
       updateHomeCards();

@@ -1,1 +1,58 @@
-[{"id":"cmd_1","type":"direct","name":"微信扫一扫","desc":"打开微信扫一扫","content":"cmd activity start -n com.tencent.mm/com.tencent.mm.ui.LauncherUI  -a com.tencent.mm.ui.ShortCutDispatchAction --es LauncherUI.Shortcut.LaunchType launch_type_scan_qrcode"},{"id":"cmd_2","type":"direct","name":"支付宝扫一扫","desc":"打开支付宝扫一扫","content":"cmd activity start -n com.eg.android.AlipayGphone/com.alipay.android.phone.wallet.shortcuts.bridge.ShortcutsLauncherActivity -a android.intent.action.VIEW  --es KEY_APP_ID 10000007 --es KEY_SCHEME \"alipays://platformapi/startapp?appId=10000007&sourceId=scan3dtouch\""},{"id":"cmd_3","type":"direct","name":"Google 圈点即搜","desc":"需要 MICTS","content":"cmd activity start -n com.parallelc.micts/.ui.activity.MainActivity"},{"id":"cmd_4","type":"direct","name":"Google 问屏","desc":"原生 Google 问屏","content":"cmd activity start -a android.intent.action.VOICE_COMMAND -p com.google.android.googlequicksearchbox"},{"id":"cmd_5","type":"direct","name":"Google 问屏 (稳定版)","desc":"需要 VISTrigger，但是更稳定","content":"cmd activity start -n com.parallelc.vistrigger/com.parallelc.micts.ui.activity.MainActivity"},{"id":"cmd_6","type":"direct","name":"小布识屏","desc":"触发全屏 OCR","content":"cmd activity start-foreground-service -a oplus.intent.action.DIRECT_SIDEBAR_SERVICE --es extra_entrance_function full_screen_ocr --es triggered_app com.coloros.smartsidebar"},{"id":"cmd_7","type":"direct","name":"小布一键闪记","desc":"OPPO 小布一键闪记","content":"cmd activity start-foreground-service --user 0 -n com.oplus.gleanerservice/com.oplus.gleanerservice.flashnotes.business.service.DataCollectService -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1"},{"id":"cmd_8","type":"direct","name":"小布听一听","desc":"OPPO 小布听一听","content":"cmd activity start-foreground-service --user 0 -n com.oplus.gleanerservice/com.oplus.gleanerservice.flashnotes.business.service.DataCollectService -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1 --ei longPressEventType 1"},{"id":"cmd_9","type":"direct","name":"官方相机","desc":"启动系统相机","content":"cmd activity start -n com.oplus.camera/com.oplus.camera.Camera"},{"id":"cmd_10","type":"direct","name":"截屏","desc":"系统级别截屏","content":"service call color_screenshot 1"},{"id":"cmd_11","type":"direct","name":"全局搜索","desc":"打开全局搜索首页","content":"cmd activity start -n com.heytap.quicksearchbox/com.heytap.quicksearchbox.ui.activity.SearchHomeActivity"},{"id":"cmd_1778666851881","type":"indirect","name":"开关手电筒","desc":"开关手电筒，使用白光","content":"torch.sh"}]
+[
+    {
+        "id": "cmd_1",
+        "type": "direct",
+        "name": "微信扫一扫",
+        "desc": "打开微信扫一扫",
+        "content": "cmd activity start -n com.tencent.mm/com.tencent.mm.ui.LauncherUI  -a com.tencent.mm.ui.ShortCutDispatchAction --es LauncherUI.Shortcut.LaunchType launch_type_scan_qrcode"
+    },
+    {
+        "id": "cmd_2",
+        "type": "direct",
+        "name": "支付宝扫一扫",
+        "desc": "打开支付宝扫一扫",
+        "content": "cmd activity start -n com.eg.android.AlipayGphone/com.alipay.android.phone.wallet.shortcuts.bridge.ShortcutsLauncherActivity -a android.intent.action.VIEW  --es KEY_APP_ID 10000007 --es KEY_SCHEME \"alipays://platformapi/startapp?appId=10000007&sourceId=scan3dtouch\""
+    },
+    {
+        "id": "cmd_6",
+        "type": "direct",
+        "name": "小布识屏",
+        "desc": "触发全屏 OCR",
+        "content": "cmd activity start-foreground-service -a oplus.intent.action.DIRECT_SIDEBAR_SERVICE --es extra_entrance_function full_screen_ocr --es triggered_app com.coloros.smartsidebar"
+    },
+    {
+        "id": "cmd_7",
+        "type": "direct",
+        "name": "小布一键闪记",
+        "desc": "OPPO 小布一键闪记",
+        "content": "cmd activity start-foreground-service --user 0 -n com.oplus.gleanerservice/com.oplus.gleanerservice.flashnotes.business.service.DataCollectService -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1"
+    },
+    {
+        "id": "cmd_8",
+        "type": "direct",
+        "name": "小布听一听",
+        "desc": "OPPO 小布听一听",
+        "content": "cmd activity start-foreground-service --user 0 -n com.oplus.gleanerservice/com.oplus.gleanerservice.flashnotes.business.service.DataCollectService -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1 --ei longPressEventType 1"
+    },
+    {
+        "id": "cmd_9",
+        "type": "direct",
+        "name": "官方相机",
+        "desc": "启动系统相机",
+        "content": "cmd activity start -n com.oplus.camera/com.oplus.camera.Camera"
+    },
+    {
+        "id": "cmd_10",
+        "type": "direct",
+        "name": "截屏",
+        "desc": "系统级别截屏",
+        "content": "service call color_screenshot 1"
+    },
+    {
+        "id": "cmd_1778666851881",
+        "type": "indirect",
+        "name": "开关手电筒",
+        "desc": "开关手电筒，使用白光",
+        "content": "torch.sh"
+    }
+]
