@@ -210,7 +210,10 @@
   <div class="dialog-backdrop" id="dialog-select">
     <div class="dialog-box">
       <div class="dialog-header"><div class="dialog-title">修改命令</div></div>
-      <div class="dialog-content" id="dialog-select-list"></div>
+      <div class="dialog-content">
+        <div class="list-item" onclick="selectCommand(null)"><div class="list-item-title">未配置</div><div style="opacity:0.6;font-size:12px;pointer-events:none;">不执行动作</div></div>
+        <div id="dialog-select-list"></div>
+      </div>
       <div class="dialog-footer"><button class="dialog-btn" onclick="closeDialog('dialog-select')">取消</button></div>
     </div>
   </div>
@@ -729,12 +732,12 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     }
 
     async function selectCommand(cmd) {
-      const error = validateCommand(cmd);
+      const error = cmd ? validateCommand(cmd) : "";
       if (error) {
         notifyUser(error);
         return;
       }
-      const next = { ...iniData, [currentSelectTrigger]: buildFinalCommand(cmd) };
+      const next = { ...iniData, [currentSelectTrigger]: cmd ? buildFinalCommand(cmd) : "未配置" };
       if (await writeIni(next)) {
         iniData = next;
         closeDialog('dialog-select');
