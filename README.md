@@ -124,7 +124,7 @@ EasyKey 是面向指定 OPPO / 一加设备的 KernelSU 模块，可以为实体
 | 长按 | 持续按住达到 `1000 ms` 后触发一次，松开时不会再追加单击 |
 | 双击 | 两次短按的松开事件间隔在 `350 ms` 窗口内时触发，替代这次单击动作 |
 
-时间阈值以 [src/EasyKey.c](src/EasyKey.c) 中的 `LONG_MS`、`DOUBLE_MS` 为准，目前不能通过 WebUI 或 `config.ini` 调整。若不需要双击且希望单击更快响应，可将双击设为“未配置”。
+时间阈值以 [src/core.h](src/core.h) 中的 `LONG_MS`、`DOUBLE_MS` 为准，目前不能通过 WebUI 或 `config.ini` 调整。若不需要双击且希望单击更快响应，可将双击设为“未配置”。
 
 ## 配置文件与自定义命令
 
@@ -247,7 +247,11 @@ easykey/
 ├── README.md
 ├── package.ps1
 ├── src/
-│   └── EasyKey.c
+│   ├── EasyKey.c
+│   ├── core.c
+│   └── core.h
+├── tests/
+│   └── core_test.c
 ├── scripts/
 │   ├── build.ps1
 │   └── test.ps1
@@ -269,7 +273,9 @@ easykey/
 
 | 路径 | 职责 |
 | --- | --- |
-| `src/EasyKey.c` | 手势识别、命令执行、输入设备发现、配置监听和后端自测 |
+| `src/EasyKey.c` | 命令执行、输入设备发现和配置监听 |
+| `src/core.c`、`src/core.h` | 手势识别与命令解析，供正式后端和独立测试共用 |
+| `tests/core_test.c` | 手势识别与命令解析自测，不参与正式构建 |
 | `scripts/build.ps1` | 使用 Zig 交叉编译 ARM64 后端 |
 | `scripts/test.ps1` | 后端自测、WebUI 静态检查、数据与安装包检查 |
 | `package.ps1` | 先构建后打包，版本号读取自 `module.prop` |
@@ -324,7 +330,7 @@ Set-Location easykey
 
 `scripts/test.ps1` 当前会检查：
 
-1. 以 `SELFTEST` 模式编译并运行手势识别与命令解析自测。
+1. 将 `tests/core_test.c` 与 `src/core.c` 一起编译，运行手势识别与命令解析自测。
 2. WebUI 内联 JavaScript 的语法和 HTML 中重复的 `id`。
 3. 两份命令库能否解析为 JSON，以及仓库中的用户初始命令库与默认命令库是否一致。
 4. 模块版本为 `v3`、作者为 `MoeShadow`。

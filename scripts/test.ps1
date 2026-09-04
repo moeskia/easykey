@@ -5,7 +5,7 @@ $selfTest = Join-Path ([IO.Path]::GetTempPath()) "easykey-selftest-$PID.exe"
 
 Push-Location $root
 try {
-    & uv run --no-project --with ziglang python -m ziglang cc -DSELFTEST -O2 -Wall -Wextra -Werror "src/EasyKey.c" -o $selfTest
+    & uv run --no-project --with ziglang python -m ziglang cc -O2 -Wall -Wextra -Werror "tests/core_test.c" "src/core.c" -o $selfTest
     if ($LASTEXITCODE -ne 0) { throw "后端自测编译失败" }
     & $selfTest
     if ($LASTEXITCODE -ne 0) { throw "后端自测失败: $LASTEXITCODE" }
