@@ -202,6 +202,9 @@
 
     .custom-select-btn { background-color: var(--sys-btn-bg); color: var(--sys-btn-on-bg); font-size: 14px; font-weight: 500; cursor: pointer; display: flex; justify-content: center; align-items: center; border-radius: 12px;}
     .custom-select-btn:active { opacity: 0.8; }
+    .status-actions { display: flex; gap: 8px; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    body.busy .clickable, body.busy .list-item, body.busy .repo-item { pointer-events: none; }
   </style>
 </head>
 <body>
@@ -286,7 +289,10 @@
           <div class="status-title">EasyKey 进程</div>
           <div class="status-val" id="status-label">检测中...</div>
         </div>
-        <button class="status-refresh" id="status-refresh" onclick="refreshAll()">刷新</button>
+        <div class="status-actions">
+          <button class="status-refresh" id="status-reload" onclick="reloadBackend()">重载</button>
+          <button class="status-refresh" id="status-refresh" onclick="refreshAll()">刷新</button>
+        </div>
       </div>
       <div class="status-grid">
         <div class="status-detail"><span>模块版本</span><strong id="status-version">—</strong></div>
@@ -422,7 +428,7 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
 
     function decodeText(value) {
       const bytes = Uint8Array.from(atob(value), c => c.charCodeAt(0));
-      return new TextDecoder().decode(bytes);
+      return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     }
 
     function encodeText(value) {
@@ -438,19 +444,23 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     }
 
     async function readFromFileSafe(filePath) {
-      const result = await execShell(`[ -f ${filePath} ] || exit 44; base64 ${filePath} | tr -d '\n'`);
-      if (result.errno !== 0) return { ok: false, exists: result.errno !== 44, text: "", error: result.stderr };
+      const result = await execShell(`[ -f ${filePath} ] || { printf 'ek_file_missing'; exit 44; }; b64=$(base64 ${filePath}) || exit 1; printf 'ek_file_ok:%s:ek_file_end' "$b64" | tr -d '\n'`);
+      const output = result.stdout.trim();
+      if (result.errno === 44 || output === 'ek_file_missing') return { ok: false, exists: false, text: "", error: "文件不存在" };
+      if (result.errno !== 0 || !output.startsWith('ek_file_ok:') || !output.endsWith(':ek_file_end'))
+        return { ok: false, exists: true, text: "", error: result.stderr || "读取失败或返回内容不完整" };
       try {
-        return { ok: true, exists: true, text: decodeText(result.stdout.trim()), error: "" };
+        return { ok: true, exists: true, text: decodeText(output.slice(11, -12)), error: "" };
       } catch (e) {
         return { ok: false, exists: true, text: "", error: "文件不是有效的 UTF-8 文本" };
       }
     }
 
     async function readFileChunked(filePath, chunkLen) {
-      const ex = await execShell(`[ -f ${filePath} ] || exit 44`);
-      if (ex.errno === 44) return { ok: false, exists: false, text: "", error: "文件不存在" };
-      if (ex.errno !== 0) return { ok: false, exists: true, text: "", error: ex.stderr };
+      const ex = await execShell(`[ -f ${filePath} ] || { printf 'ek_file_missing'; exit 44; }; printf 'ek_file_exists'`);
+      if (ex.errno === 44 || ex.stdout.trim() === 'ek_file_missing') return { ok: false, exists: false, text: "", error: "文件不存在" };
+      if (ex.errno !== 0 || ex.stdout.trim() !== 'ek_file_exists')
+        return { ok: false, exists: true, text: "", error: ex.stderr || "文件检查未确认" };
       const parts = [];
       const step = chunkLen || 1000;
       let offset = 0;
@@ -475,9 +485,9 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
 
     async function writeToFileSafe(filePath, contentStr) {
       const b64 = encodeText(contentStr);
-      const tempPath = filePath + '.tmp';
-      const result = await execShell(`printf '%s' '${b64}' | base64 -d > ${tempPath} && mv -f ${tempPath} ${filePath}`);
-      return { ok: result.errno === 0, error: result.stderr || `写入失败 (${result.errno})` };
+      const tempPath = filePath + '.tmp.$$';
+      const result = await execShell(`printf '%s' '${b64}' | base64 -d > ${tempPath} && mv -f ${tempPath} ${filePath} && printf 'easykey_write_ok' || { rm -f ${tempPath}; exit 1; }`);
+      return { ok: result.errno === 0 && result.stdout.trim() === 'easykey_write_ok', error: result.stderr || "写入未确认，请刷新后重试" };
     }
 
     function setTheme(theme) {
@@ -491,8 +501,17 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     setTheme(localStorage.getItem('easykey_theme') || 'purple');
 
     let repoData = [];
-    let iniData = { click: "未配置", long: "未配置", double: "未配置" };
+    let iniData = null;
+    let iniReady = false;
+    let repoReady = false;
+    let busy = false;
     let refreshPromise = null;
+
+    function setBusy(value) {
+      busy = value;
+      document.body.classList.toggle('busy', value);
+      document.querySelectorAll('button, input, textarea').forEach(element => { element.disabled = value; });
+    }
 
     function parseSnapshot(text) {
       const values = {};
@@ -560,20 +579,34 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     }
 
     function parseIniText(text) {
-      const next = { click: "未配置", long: "未配置", double: "未配置" };
-      if (text) {
-        const lines = text.replace(/\r/g, '').split('\n');
-        lines.forEach(line => {
-          let l = line.trim();
-          if(l && l.includes('=')) {
-            const idx = l.indexOf('=');
-            const k = l.substring(0, idx).trim();
-            let v = l.substring(idx + 1).replace(/[\r\n]+/g, '').trim().replace(/^['"](.*)['"]$/, '$1');
-            if(k === 'click' || k === 'long' || k === 'double') {
-              next[k] = v === '' ? '未配置' : v;
-            }
-          }
-        });
+      if (new TextEncoder().encode(text).length > 3096) throw new Error("配置文件过大");
+      const next = { click: "", long: "", double: "" };
+      const seen = new Set();
+      for (const line of text.split(/[\r\n]+/)) {
+        if (!line) continue;
+        const index = line.indexOf('=');
+        const key = line.slice(0, index);
+        if (index < 0 || !Object.prototype.hasOwnProperty.call(next, key) || seen.has(key))
+          throw new Error("键名无效或重复");
+        const value = line.slice(index + 1);
+        const error = validateCommandText(value);
+        if (error) throw new Error(error);
+        next[key] = value;
+        seen.add(key);
+      }
+      return next;
+    }
+
+    function parseRepoText(text) {
+      const next = JSON.parse(text);
+      if (!Array.isArray(next)) throw new Error("命令库必须是数组");
+      const ids = new Set();
+      for (const command of next) {
+        if (!command || typeof command.id !== 'string' || !command.id || ids.has(command.id) ||
+            (command.type !== 'direct' && command.type !== 'indirect') || typeof command.content !== 'string' ||
+            (command.name !== undefined && typeof command.name !== 'string') ||
+            (command.desc !== undefined && typeof command.desc !== 'string')) throw new Error("命令条目无效或 ID 重复");
+        ids.add(command.id);
       }
       return next;
     }
@@ -585,11 +618,12 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
         return;
       }
       try {
-        const next = JSON.parse(result.text);
-        if (!Array.isArray(next)) throw new Error();
-        repoData = next;
+        const next = parseRepoText(result.text);
         const saved = await writeToFileSafe(REPO_FILE, JSON.stringify(next));
-        if (!saved.ok) notifyUser(`命令库初始化失败：${saved.error}`);
+        if (saved.ok) {
+          repoData = next;
+          repoReady = true;
+        } else notifyUser(`命令库初始化失败：${saved.error}`);
       } catch (e) {
         notifyUser("默认命令库格式错误，未写入用户数据");
       }
@@ -597,63 +631,102 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
 
     async function applySnapshot(values) {
       applyStatus(values);
+      iniReady = false;
+      repoReady = false;
       const ini = await readFromFileSafe(INI_FILE);
       if (ini.ok) {
-        try { iniData = parseIniText(ini.text); }
-        catch (e) { notifyUser("config.ini 解析失败，已保留当前页面数据"); }
-      } else {
-        iniData = { click: "未配置", long: "未配置", double: "未配置" };
-      }
+        try {
+          iniData = parseIniText(ini.text);
+          iniReady = true;
+        } catch (e) {
+          notifyUser(`config.ini 解析失败：${e.message}。已保留页面数据，请修复后刷新`);
+        }
+      } else notifyUser(`config.ini 读取失败：${ini.error}。请恢复文件后刷新`);
       const repo = await readFileChunked(REPO_FILE, 1000);
       if (repo.ok) {
         try {
-          const next = JSON.parse(repo.text);
-          if (!Array.isArray(next)) throw new Error();
-          repoData = next;
+          repoData = parseRepoText(repo.text);
+          repoReady = true;
         } catch (e) {
-          notifyUser("repo.json 解析失败，已保留当前页面数据");
+          notifyUser("repo.json 解析失败，已保留页面数据，请修复后刷新");
         }
       } else if (!repo.exists) {
         await loadDefaultRepo();
       } else {
-        notifyUser("repo.json 读取失败，已保留当前页面数据：" + repo.error);
+        notifyUser("repo.json 读取失败，已保留页面数据：" + repo.error);
       }
       renderRepoList();
       updateHomeCards();
     }
 
     async function performRefresh() {
-      const button = document.getElementById('status-refresh');
-      button.disabled = true;
+      iniReady = false;
+      repoReady = false;
       try {
         const result = await execShell(SNAPSHOT_COMMAND);
         if (result.errno === 0) await applySnapshot(parseSnapshot(result.stdout));
         else applyStatus({}, true);
       } catch (e) {
         applyStatus({}, true);
-      } finally {
-        button.disabled = false;
+        notifyUser("刷新失败，请重试");
       }
     }
 
     function refreshAll() {
-      if (!refreshPromise) refreshPromise = performRefresh().finally(() => { refreshPromise = null; });
+      if (refreshPromise) return refreshPromise;
+      if (busy) return Promise.resolve();
+      setBusy(true);
+      refreshPromise = performRefresh().finally(() => {
+        refreshPromise = null;
+        setBusy(false);
+      });
       return refreshPromise;
     }
 
+    async function reloadBackend() {
+      if (busy) return;
+      setBusy(true);
+      const button = document.getElementById('status-reload');
+      button.textContent = '重载中';
+      try {
+        const result = await execShell(`/data/adb/ksu/bin/busybox sh ${MODULE_DIR}reload.sh 2>&1`);
+        const loaded = result.errno === 0 && result.stdout.trim() === 'easykey_reload_ok';
+        await performRefresh();
+        notifyUser(loaded ? "EasyKey 已重载" : `重载失败：${result.stderr || result.stdout.trim() || "未收到启动确认"}`);
+      } catch (e) {
+        notifyUser(`重载失败：${e.message}`);
+      } finally {
+        button.textContent = '重载';
+        setBusy(false);
+      }
+    }
+
     async function writeRepo(nextRepo) {
+      if (!repoReady) {
+        notifyUser("请先成功读取命令库，再保存修改");
+        return false;
+      }
       const result = await writeToFileSafe(REPO_FILE, JSON.stringify(nextRepo));
-      if (!result.ok) notifyUser(`命令库保存失败：${result.error}`);
+      if (!result.ok) {
+        repoReady = false;
+        notifyUser(`命令库保存失败：${result.error}`);
+      }
       return result.ok;
     }
 
     async function writeIni(nextIni) {
-      const wClick = nextIni.click === "未配置" ? "" : nextIni.click;
-      const wLong = nextIni.long === "未配置" ? "" : nextIni.long;
-      const wDouble = nextIni.double === "未配置" ? "" : nextIni.double;
-      const content = `click=${wClick}\nlong=${wLong}\ndouble=${wDouble}`;
+      if (!iniReady) {
+        notifyUser("请先成功读取快捷键配置，再保存修改");
+        return false;
+      }
+      const content = `click=${nextIni.click}\nlong=${nextIni.long}\ndouble=${nextIni.double}`;
+      try { parseIniText(content); }
+      catch (e) { notifyUser(`配置无效：${e.message}`); return false; }
       const result = await writeToFileSafe(INI_FILE, content);
-      if (!result.ok) notifyUser(`快捷键配置保存失败：${result.error}`);
+      if (!result.ok) {
+        iniReady = false;
+        notifyUser(`快捷键配置保存失败：${result.error}`);
+      }
       return result.ok;
     }
 
@@ -667,18 +740,21 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
       return command.type === 'direct' ? content : INDIRECT_PREFIX + content;
     }
 
+    function validateCommandText(content) {
+      if (/[\x00-\x08\x0A-\x1F\x7F]/.test(content)) return "命令不能包含换行或控制字符";
+      if (new TextEncoder().encode(content).length > MAX_COMMAND_BYTES) return `命令不能超过 ${MAX_COMMAND_BYTES} 字节`;
+      return "";
+    }
+
     function validateCommand(command) {
       if (command.type !== 'direct' && command.type !== 'indirect') return "命令类型无效";
       const content = String(command.content || "");
       if (!content.trim()) return "命令内容不能为空";
-      if (/[\r\n]/.test(content)) return "命令内容不能包含换行";
-      if (new TextEncoder().encode(buildFinalCommand(command)).length > MAX_COMMAND_BYTES)
-        return `命令不能超过 ${MAX_COMMAND_BYTES} 字节`;
-      return "";
+      return validateCommandText(buildFinalCommand(command));
     }
 
     function getCommandNameByContent(rawCmd) {
-      if(!rawCmd || rawCmd === "未配置") return "未配置";
+      if(!rawCmd) return "未配置";
       const target = normalizeCmdStr(rawCmd);
       for (let cmd of repoData) {
         let cmdDirect = normalizeCmdStr(cmd.content);
@@ -691,9 +767,8 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     }
 
     function updateHomeCards() {
-      document.getElementById('val-click').innerText = getCommandNameByContent(iniData.click);
-      document.getElementById('val-long').innerText = getCommandNameByContent(iniData.long);
-      document.getElementById('val-double').innerText = getCommandNameByContent(iniData.double);
+      for (const key of ['click', 'long', 'double'])
+        document.getElementById('val-' + key).innerText = iniData ? getCommandNameByContent(iniData[key]) : "读取失败";
     }
 
     function closeDialog(id) {
@@ -707,6 +782,8 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
 
     let currentSelectTrigger = 'click';
     function openSelectDialog(trigger) {
+      if (busy) return;
+      if (!iniReady) { notifyUser("请先成功读取快捷键配置，再修改绑定"); return; }
       currentSelectTrigger = trigger;
       const listContainer = document.getElementById('dialog-select-list');
       listContainer.innerHTML = '';
@@ -732,17 +809,19 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     }
 
     async function selectCommand(cmd) {
+      if (busy) return;
+      if (!iniReady) { notifyUser("请先成功读取快捷键配置，再修改绑定"); return; }
       const error = cmd ? validateCommand(cmd) : "";
-      if (error) {
-        notifyUser(error);
-        return;
-      }
-      const next = { ...iniData, [currentSelectTrigger]: cmd ? buildFinalCommand(cmd) : "未配置" };
-      if (await writeIni(next)) {
-        iniData = next;
-        closeDialog('dialog-select');
-        updateHomeCards();
-      }
+      if (error) { notifyUser(error); return; }
+      setBusy(true);
+      try {
+        const next = { ...iniData, [currentSelectTrigger]: cmd ? buildFinalCommand(cmd) : "" };
+        if (await writeIni(next)) {
+          iniData = next;
+          closeDialog('dialog-select');
+          updateHomeCards();
+        }
+      } finally { setBusy(false); }
     }
 
     function renderRepoList() {
@@ -790,14 +869,16 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     });
 
     function openEditDialog(cmdId = null) {
+      if (busy) return;
+      if (!repoReady) { notifyUser("请先成功读取命令库，再编辑"); return; }
       const deleteBtn = document.getElementById('btn-delete-cmd');
       if (cmdId) {
         const cmd = repoData.find(c => c.id === cmdId);
         document.getElementById('edit-dialog-title').innerText = "编辑命令";
         document.getElementById('edit-id').value = cmd.id;
         selectEditType(cmd.type, cmd.type === 'direct' ? '直接命令 (Direct)' : '间接命令 (Indirect .sh)');
-        document.getElementById('edit-name').value = cmd.name;
-        document.getElementById('edit-desc').value = cmd.desc;
+        document.getElementById('edit-name').value = cmd.name || '';
+        document.getElementById('edit-desc').value = cmd.desc || '';
         document.getElementById('edit-content').value = cmd.content;
         deleteBtn.style.display = 'block';
       } else {
@@ -831,44 +912,54 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     }
 
     async function executeDeleteCommand() {
-      const id = document.getElementById('edit-id').value;
-      if (id) {
-        const next = repoData.filter(c => c.id !== id);
-        if (await writeRepo(next)) {
-          repoData = next;
-          renderRepoList();
-          updateHomeCards();
-          closeDialog('dialog-edit');
+      if (busy) return;
+      if (!repoReady) { notifyUser("请先成功读取命令库，再编辑"); return; }
+      setBusy(true);
+      try {
+        const id = document.getElementById('edit-id').value;
+        if (id) {
+          const next = repoData.filter(c => c.id !== id);
+          if (await writeRepo(next)) {
+            repoData = next;
+            renderRepoList();
+            updateHomeCards();
+            closeDialog('dialog-edit');
+          }
         }
-      }
-      closeDialog('dialog-confirm-delete');
+        closeDialog('dialog-confirm-delete');
+      } finally { setBusy(false); }
     }
 
     async function saveEditedCommand() {
-      const id = document.getElementById('edit-id').value;
-      const newCmd = {
-        id: id || "cmd_" + Date.now(),
-        type: document.getElementById('edit-type').value,
-        name: document.getElementById('edit-name').value.trim() || "未命名",
-        desc: document.getElementById('edit-desc').value.trim(),
-        content: document.getElementById('edit-content').value.trim()
-      };
-      const error = validateCommand(newCmd);
-      if (error) {
-        notifyUser(error);
-        return;
-      }
-      const next = repoData.slice();
-      if (id) {
-        const index = next.findIndex(c => c.id === id);
-        if (index > -1) next[index] = newCmd;
-      } else { next.push(newCmd); }
-      if (await writeRepo(next)) {
-        repoData = next;
-        renderRepoList();
-        closeDialog('dialog-edit');
-        updateHomeCards();
-      }
+      if (busy) return;
+      if (!repoReady) { notifyUser("请先成功读取命令库，再编辑"); return; }
+      setBusy(true);
+      try {
+        const id = document.getElementById('edit-id').value;
+        const newCmd = {
+          id: id || "cmd_" + Date.now(),
+          type: document.getElementById('edit-type').value,
+          name: document.getElementById('edit-name').value.trim() || "未命名",
+          desc: document.getElementById('edit-desc').value.trim(),
+          content: document.getElementById('edit-content').value.trim()
+        };
+        const error = validateCommand(newCmd);
+        if (error) {
+          notifyUser(error);
+          return;
+        }
+        const next = repoData.slice();
+        if (id) {
+          const index = next.findIndex(c => c.id === id);
+          if (index > -1) next[index] = newCmd;
+        } else { next.push(newCmd); }
+        if (await writeRepo(next)) {
+          repoData = next;
+          renderRepoList();
+          closeDialog('dialog-edit');
+          updateHomeCards();
+        }
+      } finally { setBusy(false); }
     }
 
     // 聚焦辅助：触发居中

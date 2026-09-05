@@ -105,13 +105,64 @@ static void prepare_command(struct command *command)
     command->program = program;
 }
 
-void set_command(struct command *command, const char *src, size_t length)
+int set_command(struct command *command, const char *src, size_t length)
 {
+    size_t i;
     if (length >= COMMAND_SIZE)
-        length = COMMAND_SIZE - 1;
+        return 0;
+    for (i = 0; i < length; i++) {
+        unsigned char c = (unsigned char)src[i];
+        if ((c < 32 && c != '\t') || c == 127)
+            return 0;
+    }
     memcpy(command->text, src, length);
     command->text[length] = 0;
     prepare_command(command);
+    return 1;
+}
+
+int parse_config(struct config *config, const char *data, size_t length)
+{
+    struct config next = {0};
+    const char *p = data;
+    const char *end = data + length;
+    unsigned seen = 0;
+    if (length > CONFIG_SIZE)
+        return 0;
+    while (p < end) {
+        const char *line = p;
+        struct command *command;
+        size_t size;
+        size_t prefix;
+        unsigned key;
+        while (p < end && *p != '\r' && *p != '\n')
+            p++;
+        size = (size_t)(p - line);
+        while (p < end && (*p == '\r' || *p == '\n'))
+            p++;
+        if (!size)
+            continue;
+        if (size >= 6 && !memcmp(line, "click=", 6)) {
+            command = &next.click;
+            prefix = 6;
+            key = 1;
+        } else if (size >= 5 && !memcmp(line, "long=", 5)) {
+            command = &next.long_press;
+            prefix = 5;
+            key = 2;
+        } else if (size >= 7 && !memcmp(line, "double=", 7)) {
+            command = &next.double_click;
+            prefix = 7;
+            key = 4;
+        } else {
+            return 0;
+        }
+        if ((seen & key) || !set_command(command, line + prefix, size - prefix))
+            return 0;
+        seen |= key;
+    }
+    *config = next;
+    return 1;
 }
 
 int gesture_due(struct gesture *g, int64_t now)

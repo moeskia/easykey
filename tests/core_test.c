@@ -1,5 +1,6 @@
 #include "../src/core.h"
 #include <string.h>
+#include <assert.h>
 
 static int test_gestures(void)
 {
@@ -110,7 +111,54 @@ static int test_gestures(void)
     return 0;
 }
 
+static void test_config(void)
+{
+    struct config config = {0};
+    struct config saved;
+    struct command command = {0};
+    char limit[COMMAND_SIZE + 1];
+    char data[CONFIG_SIZE + 1];
+    const char initial[] = "click=  echo \"a  b\"  \r\nlong=\r\ndouble=echo again";
+    const char *invalid[] = {"click=echo changed\nclick=echo duplicate", "click=echo changed\nlong =echo invalid", "click=echo changed\nunknown=bad", "click=echo changed\nnot-a-key", "click=echo\x01"};
+    size_t i;
+    assert(parse_config(&config, initial, sizeof(initial) - 1));
+    assert(!strcmp(config.click.text, "  echo \"a  b\"  "));
+    assert(!config.long_press.text[0]);
+    assert(!strcmp(config.double_click.text, "echo again"));
+    saved = config;
+    for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        assert(!parse_config(&config, invalid[i], strlen(invalid[i])));
+        assert(!memcmp(&config, &saved, sizeof(config)));
+    }
+    assert(!parse_config(&config, "click=echo\0bad", sizeof("click=echo\0bad") - 1));
+    assert(!memcmp(&config, &saved, sizeof(config)));
+    memset(data, '\n', sizeof(data));
+    assert(!parse_config(&config, data, sizeof(data)));
+    assert(!memcmp(&config, &saved, sizeof(config)));
+    memset(limit, 'x', sizeof(limit));
+    assert(set_command(&command, limit, COMMAND_SIZE - 1));
+    assert(strlen(command.text) == COMMAND_SIZE - 1);
+    assert(!set_command(&command, limit, COMMAND_SIZE));
+    assert(strlen(command.text) == COMMAND_SIZE - 1);
+    memcpy(data, "click=", 6);
+    memcpy(data + 6, limit, COMMAND_SIZE);
+    assert(!parse_config(&config, data, COMMAND_SIZE + 6));
+    assert(!memcmp(&config, &saved, sizeof(config)));
+    assert(parse_config(&config, data, COMMAND_SIZE + 5));
+    assert(strlen(config.click.text) == COMMAND_SIZE - 1);
+    assert(!config.long_press.text[0] && !config.double_click.text[0]);
+    assert(parse_config(&config, "double=echo only", sizeof("double=echo only") - 1));
+    assert(!config.click.text[0] && !config.long_press.text[0]);
+    assert(!strcmp(config.double_click.text, "echo only"));
+    assert(parse_config(&config, "", 0));
+    assert(!config.click.text[0] && !config.long_press.text[0] && !config.double_click.text[0]);
+    assert(!set_command(&command, "echo\nchanged", sizeof("echo\nchanged") - 1));
+}
+
 int main(void)
 {
-    return test_gestures();
+    int result = test_gestures();
+    if (!result)
+        test_config();
+    return result;
 }

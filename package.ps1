@@ -7,7 +7,7 @@ $outputDir = Join-Path $PSScriptRoot "dist"
 
 $version = (Get-Content -LiteralPath (Join-Path $moduleDir "module.prop") | Where-Object { $_ -like "version=*" } | Select-Object -First 1).Substring(8)
 $output = Join-Path $outputDir "EasyKey-$version.zip"
-$files = @("EasyKey", "config.ini", "customize.sh", "module.prop", "repo.default.json", "repo.json", "service.sh", "ind", "webroot")
+$files = @("EasyKey", "config.ini", "customize.sh", "module.prop", "repo.default.json", "repo.json", "service.sh", "reload.sh", "ind", "webroot")
 
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 Push-Location $moduleDir

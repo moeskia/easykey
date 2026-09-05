@@ -16,10 +16,8 @@ wait_volume_key() {
     done
 }
 
-# 目标型号列表
 SUPPORTED_MODELS="plk110 plz110 cph2747 pkx110 plq110 plr110 plc110 pmb110"
 
-# 获取当前设备型号并转为小写
 CURRENT_MODEL=$(getprop ro.product.model | tr '[:upper:]' '[:lower:]')
 MATCH_FOUND=false
 
@@ -27,7 +25,6 @@ check(){
 
 ui_print "- 正在验证设备型号..."
 
-# 检查当前型号是否在支持列表中
 for model in $SUPPORTED_MODELS; do
     if [ "$CURRENT_MODEL" = "$model" ]; then
         MATCH_FOUND=true
@@ -36,7 +33,6 @@ for model in $SUPPORTED_MODELS; do
     fi
 done
 
-# 如果型号不匹配，终止安装并返回 1
 if [ "$MATCH_FOUND" = false ]; then
     ui_print "**************************************"
     ui_print " ERROR: 不支持的设备型号! "
@@ -68,19 +64,25 @@ fi
 ui_print "- 已确认阅读说明，继续安装"
 ui_print " "
 
-if [ -d "/data/adb/modules/Easy_Key" ]; then
+OLDMOD=/data/adb/modules/Easy_Key
+if [ -d "$OLDMOD" ]; then
     ui_print "- 检测到 EasyKey 模块正在更新"
-    if [ -f "/data/adb/modules/Easy_Key/config.ini" ]; then
-        cp -f "/data/adb/modules/Easy_Key/config.ini" "$MODPATH/config.ini"
-        ui_print "- 已保留原本的快捷键配置"
+    for name in config.ini repo.json; do
+        if [ -f "$OLDMOD/$name" ]; then
+            cp -f "$OLDMOD/$name" "$MODPATH/$name" || abort "- 无法保留 $name，安装已取消"
+            ui_print "- 已保留 $name"
+        fi
+    done
+    if [ -d "$OLDMOD/backup" ]; then
+        cp -R "$OLDMOD/backup" "$MODPATH/backup" || abort "- 无法保留已有脚本备份，安装已取消"
     fi
-    if [ -f "/data/adb/modules/Easy_Key/repo.json" ]; then
-        cp -f "/data/adb/modules/Easy_Key/repo.json" "$MODPATH/repo.json"
-        ui_print "- 已保留原本的命令库"
-    fi
-    if [ -f "/data/adb/modules/Easy_Key/action.sh" ]; then
-        rm -f "/data/adb/modules/Easy_Key/action.sh"
-        ui_print "- 已清除不再需要的旧版切换器"
+    if [ -d "$OLDMOD/ind" ]; then
+        mkdir -p "$MODPATH/backup" "$MODPATH/ind" || abort "- 无法创建脚本目录，安装已取消"
+        backup=$(mktemp -d "$MODPATH/backup/upgrade.XXXXXX") || abort "- 无法创建脚本备份，安装已取消"
+        cp -R "$OLDMOD/ind" "$backup/ind" || abort "- 无法备份旧脚本，安装已取消"
+        cp -Rn "$OLDMOD/ind/." "$MODPATH/ind/" || abort "- 无法迁移自定义脚本，安装已取消"
+        ui_print "- 已保留自定义脚本，内置脚本使用新版"
+        ui_print "- 旧脚本备份：$backup/ind"
     fi
 fi
 

@@ -4,7 +4,6 @@
 #include <linux/input.h>
 #include <poll.h>
 #include <signal.h>
-#include <stdio.h>
 #include <string.h>
 #include <sys/inotify.h>
 #include <sys/ioctl.h>
@@ -17,25 +16,14 @@ enum { KEY_CODE = 735 };
 #define CONFIG_FILE MODULE_DIR "/config.ini"
 #define INPUT_SCAN_MAX 64
 
-static struct command click_cmd;
-static struct command long_cmd;
-static struct command double_cmd;
+static struct config config;
 
 static void load_config(void)
 {
-    char data[COMMAND_SIZE * 3 + 24];
-    char *line;
-    char *p;
-    char *end;
-    ssize_t size;
+    char data[CONFIG_SIZE + 1];
+    ssize_t size = 0;
     size_t total = 0;
-    int fd;
-    static const char default_click[] = "/system/bin/sh /data/adb/modules/Easy_Key/ind/torch.sh";
-    static const char default_long[] = "input keyevent KEYCODE_HOME";
-    set_command(&click_cmd, default_click, sizeof(default_click) - 1);
-    set_command(&long_cmd, default_long, sizeof(default_long) - 1);
-    set_command(&double_cmd, "", 0);
-    fd = open(CONFIG_FILE, O_RDONLY | O_CLOEXEC);
+    int fd = open(CONFIG_FILE, O_RDONLY | O_CLOEXEC);
     if (fd < 0)
         return;
     while (total < sizeof(data)) {
@@ -49,23 +37,8 @@ static void load_config(void)
         break;
     }
     close(fd);
-    p = data;
-    end = data + total;
-    while (p < end) {
-        size_t length;
-        line = p;
-        while (p < end && *p != '\r' && *p != '\n')
-            p++;
-        length = (size_t)(p - line);
-        while (p < end && (*p == '\r' || *p == '\n'))
-            p++;
-        if (length >= 6 && !memcmp(line, "click=", 6))
-            set_command(&click_cmd, line + 6, length - 6);
-        else if (length >= 5 && !memcmp(line, "long=", 5))
-            set_command(&long_cmd, line + 5, length - 5);
-        else if (length >= 7 && !memcmp(line, "double=", 7))
-            set_command(&double_cmd, line + 7, length - 7);
-    }
+    if (size == 0)
+        parse_config(&config, data, total);
 }
 
 static int64_t now_ms(void)
@@ -113,14 +86,22 @@ static int input_has_key(int fd)
 
 static int open_input_device(void)
 {
-    char path[32];
+    static const char prefix[] = "/dev/input/event";
+    char digits[3];
+    char path[sizeof(prefix) + sizeof(digits)];
     int fd;
     int index;
-    int length;
     for (index = 0; index < INPUT_SCAN_MAX; index++) {
-        length = snprintf(path, sizeof(path), "/dev/input/event%d", index);
-        if (length < 0 || (size_t)length >= sizeof(path))
-            continue;
+        if (index >= 10) {
+            digits[0] = (char)('0' + index / 10);
+            digits[1] = (char)('0' + index % 10);
+            digits[2] = 0;
+        } else {
+            digits[0] = (char)('0' + index);
+            digits[1] = 0;
+        }
+        memcpy(path, prefix, sizeof(prefix) - 1);
+        memcpy(path + sizeof(prefix) - 1, digits, (size_t)(index >= 10 ? 3 : 2));
         fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0)
             continue;
@@ -133,7 +114,7 @@ static int open_input_device(void)
 
 static void run_action(int action)
 {
-    struct command *command = action == ACT_CLICK ? &click_cmd : action == ACT_LONG ? &long_cmd : &double_cmd;
+    struct command *command = action == ACT_CLICK ? &config.click : action == ACT_LONG ? &config.long_press : &config.double_click;
     const char *path = direct_path(command->program);
     char *argv[COMMAND_ARGS + 1];
     size_t i;
@@ -205,7 +186,7 @@ static int process_input(int fd, struct gesture *gesture, int monotonic)
             if (events[i].type != EV_KEY || events[i].code != KEY_CODE)
                 continue;
             when = input_ms(&events[i], monotonic);
-            action = gesture_event(gesture, events[i].value, when, command_enabled(&double_cmd));
+            action = gesture_event(gesture, events[i].value, when, command_enabled(&config.double_click));
             if (action != ACT_NONE)
                 run_action(action);
         }

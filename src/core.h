@@ -7,6 +7,7 @@
 enum { ACT_NONE, ACT_CLICK, ACT_LONG, ACT_DOUBLE };
 enum { LONG_MS = 1000, DOUBLE_MS = 350 };
 enum { COMMAND_SIZE = 1024, COMMAND_ARGS = 32 };
+enum { CONFIG_SIZE = COMMAND_SIZE * 3 + 24 };
 enum { EXEC_SHELL, EXEC_CMD, EXEC_INPUT, EXEC_SERVICE, EXEC_SH };
 
 struct gesture {
@@ -24,7 +25,14 @@ struct command {
     uint8_t program;
 };
 
-void set_command(struct command *command, const char *src, size_t length);
+struct config {
+    struct command click;
+    struct command long_press;
+    struct command double_click;
+};
+
+int set_command(struct command *command, const char *src, size_t length);
+int parse_config(struct config *config, const char *data, size_t length);
 int gesture_due(struct gesture *g, int64_t now);
 int gesture_event(struct gesture *g, int value, int64_t now, int double_enabled);
 int gesture_timeout(const struct gesture *g, int64_t now);
