@@ -105,7 +105,7 @@ static void prepare_command(struct command *command)
     command->program = program;
 }
 
-int set_command(struct command *command, const char *src, size_t length)
+static int check_command(const char *src, size_t length)
 {
     size_t i;
     if (length >= COMMAND_SIZE)
@@ -115,53 +115,95 @@ int set_command(struct command *command, const char *src, size_t length)
         if ((c < 32 && c != '\t') || c == 127)
             return 0;
     }
-    memcpy(command->text, src, length);
-    command->text[length] = 0;
-    prepare_command(command);
     return 1;
 }
 
-int parse_config(struct config *config, const char *data, size_t length)
+static void store_command(struct command *command, const char *src, size_t length)
 {
-    struct config next = {0};
-    const char *p = data;
-    const char *end = data + length;
-    unsigned seen = 0;
-    if (length > CONFIG_SIZE)
+    memcpy(command->text, src, length);
+    command->text[length] = 0;
+    prepare_command(command);
+}
+
+int set_command(struct command *command, const char *src, size_t length)
+{
+    if (!check_command(src, length))
         return 0;
+    store_command(command, src, length);
+    return 1;
+}
+
+struct config_line {
+    const char *text;
+    size_t length;
+    unsigned key;
+};
+
+/* 1 = 取到一行，0 = 数据读完，-1 = 遇到非法行 */
+static int scan_line(const char **cursor, const char *end, struct config_line *line)
+{
+    const char *p = *cursor;
     while (p < end) {
-        const char *line = p;
-        struct command *command;
+        const char *start = p;
         size_t size;
         size_t prefix;
-        unsigned key;
         while (p < end && *p != '\r' && *p != '\n')
             p++;
-        size = (size_t)(p - line);
+        size = (size_t)(p - start);
         while (p < end && (*p == '\r' || *p == '\n'))
             p++;
         if (!size)
             continue;
-        if (size >= 6 && !memcmp(line, "click=", 6)) {
-            command = &next.click;
+        *cursor = p;
+        if (size >= 6 && !memcmp(start, "click=", 6)) {
+            line->key = 1;
             prefix = 6;
-            key = 1;
-        } else if (size >= 5 && !memcmp(line, "long=", 5)) {
-            command = &next.long_press;
+        } else if (size >= 5 && !memcmp(start, "long=", 5)) {
+            line->key = 2;
             prefix = 5;
-            key = 2;
-        } else if (size >= 7 && !memcmp(line, "double=", 7)) {
-            command = &next.double_click;
+        } else if (size >= 7 && !memcmp(start, "double=", 7)) {
+            line->key = 4;
             prefix = 7;
-            key = 4;
         } else {
-            return 0;
+            return -1;
         }
-        if ((seen & key) || !set_command(command, line + prefix, size - prefix))
-            return 0;
-        seen |= key;
+        line->text = start + prefix;
+        line->length = size - prefix;
+        return 1;
     }
-    *config = next;
+    *cursor = p;
+    return 0;
+}
+
+static struct command *config_slot(struct config *config, unsigned key)
+{
+    if (key == 1)
+        return &config->click;
+    if (key == 2)
+        return &config->long_press;
+    return &config->double_click;
+}
+
+int parse_config(struct config *config, const char *data, size_t length)
+{
+    const char *end = data + length;
+    const char *p;
+    struct config_line line;
+    unsigned seen = 0;
+    int status;
+    if (length > CONFIG_SIZE)
+        return 0;
+    /* 第一趟只校验，全部通过之后才写入，失败时调用方的配置一字节不动 */
+    for (p = data; (status = scan_line(&p, end, &line)) > 0;) {
+        if ((seen & line.key) || !check_command(line.text, line.length))
+            return 0;
+        seen |= line.key;
+    }
+    if (status < 0)
+        return 0;
+    memset(config, 0, sizeof(*config));
+    for (p = data; scan_line(&p, end, &line) > 0;)
+        store_command(config_slot(config, line.key), line.text, line.length);
     return 1;
 }
 

@@ -366,7 +366,8 @@
     const DEFAULT_REPO_FILE = MODULE_DIR + "repo.default.json";
     const INI_FILE = MODULE_DIR + "config.ini";
     const INDIRECT_PREFIX = "/system/bin/sh " + MODULE_DIR + "ind/";
-    const MAX_COMMAND_BYTES = 1023;
+    const MAX_COMMAND_BYTES = 511;
+    const MAX_CONFIG_BYTES = (MAX_COMMAND_BYTES + 1) * 3 + 24;
     const SNAPSHOT_COMMAND = `
 pid=$(pidof EasyKey 2>/dev/null | awk '{print $1}')
 version=$(sed -n 's/^version=//p' ${MODULE_DIR}module.prop 2>/dev/null | head -n 1)
@@ -579,7 +580,7 @@ echo "ek_pid=$pid|ek_version=$version|ek_state=$state|ek_rss=$rss|ek_threads=$th
     }
 
     function parseIniText(text) {
-      if (new TextEncoder().encode(text).length > 3096) throw new Error("配置文件过大");
+      if (new TextEncoder().encode(text).length > MAX_CONFIG_BYTES) throw new Error("配置文件过大");
       const next = { click: "", long: "", double: "" };
       const seen = new Set();
       for (const line of text.split(/[\r\n]+/)) {

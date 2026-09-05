@@ -190,12 +190,12 @@ async function test() {
   await missing.run('refreshAll()');
   assert.equal(missing.run('iniReady'), false);
   const parser = setup();
-  for (const text of ['click=x\nclick=y', 'click=x\nlong =y', 'unknown=x', 'click=x\0y', 'click=' + 'x'.repeat(1024)])
+  for (const text of ['click=x\nclick=y', 'click=x\nlong =y', 'unknown=x', 'click=x\0y', 'click=' + 'x'.repeat(512)])
     assert.throws(() => parser.run('parseIniText(' + JSON.stringify(text) + ')'));
   assert.equal(parser.run('parseIniText("click=  echo \\\"a  b\\\"  \\r\\n").click'), '  echo "a  b"  ');
   assert.equal(parser.run('parseIniText("double=echo only").click'), '');
-  assert.equal(parser.run('parseIniText("click=" + "中".repeat(341)).click.length'), 341);
-  assert.throws(() => parser.run('parseIniText("click=" + "中".repeat(342))'));
+  assert.equal(parser.run('parseIniText("click=" + "中".repeat(170)).click.length'), 170);
+  assert.throws(() => parser.run('parseIniText("click=" + "中".repeat(171))'));
   assert.throws(() => parser.run('parseRepoText(\'[ {"id":"x","type":"direct","content":"x"}, {"id":"x","type":"direct","content":"y"} ]\')'));
   const edit = setup();
   await edit.run('refreshAll()');
